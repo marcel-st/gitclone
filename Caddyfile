@@ -1,0 +1,15 @@
+# Single public entrypoint. Automatic TLS for the real domain; internal HTTP to services.
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Django orchestrator: dashboard, API, its own static files, health.
+	@orchestrator path /admin/* /orchestrator-api/* /static/* /healthz/*
+	handle @orchestrator {
+		reverse_proxy orchestrator:8000
+	}
+
+	# Everything else is Forgejo: web UI, git-over-HTTPS, Forgejo's own API.
+	handle {
+		reverse_proxy forgejo:3000
+	}
+}

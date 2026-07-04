@@ -1,0 +1,28 @@
+# Local development overrides. Applied automatically by `docker compose up`.
+services:
+  db:
+    # Expose Postgres to the host for inspection during dev.
+    ports:
+      - "5432:5432"
+
+  forgejo:
+    # Reach Forgejo directly without going through Caddy/TLS.
+    ports:
+      - "3000:3000"
+
+  orchestrator:
+    build:
+      target: dev
+    environment:
+      DJANGO_DEBUG: "true"
+    # Live-reload source without rebuilding the image.
+    volumes:
+      - ./orchestrator:/app
+    command: python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+
+  caddy:
+    # For localhost dev Caddy serves internal (self-signed) TLS; keep 80/443 mapped.
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}

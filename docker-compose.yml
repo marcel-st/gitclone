@@ -1,0 +1,130 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      # Superuser owns the init script that creates the two app databases.
+      POSTGRES_USER: ${POSTGRES_SUPERUSER}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      FORGEJO_DB_NAME: ${FORGEJO_DB_NAME}
+      FORGEJO_DB_USER: ${FORGEJO_DB_USER}
+      FORGEJO_DB_PASSWORD: ${FORGEJO_DB_PASSWORD}
+      ORCHESTRATOR_DB_NAME: ${ORCHESTRATOR_DB_NAME}
+      ORCHESTRATOR_DB_USER: ${ORCHESTRATOR_DB_USER}
+      ORCHESTRATOR_DB_PASSWORD: ${ORCHESTRATOR_DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_SUPERUSER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:9
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      USER_UID: 1000
+      USER_GID: 1000
+      FORGEJO__database__DB_TYPE: postgres
+      FORGEJO__database__HOST: ${POSTGRES_HOST}:${POSTGRES_PORT}
+      FORGEJO__database__NAME: ${FORGEJO_DB_NAME}
+      FORGEJO__database__USER: ${FORGEJO_DB_USER}
+      FORGEJO__database__PASSWD: ${FORGEJO_DB_PASSWORD}
+      FORGEJO__server__ROOT_URL: ${FORGEJO_ROOT_URL}
+      FORGEJO__server__DOMAIN: ${DOMAIN}
+      # Forgejo listens HTTP internally; Caddy terminates TLS.
+      FORGEJO__server__PROTOCOL: http
+      FORGEJO__server__HTTP_PORT: 3000
+      # No anonymous browsing — everything behind sign-in.
+      FORGEJO__service__REQUIRE_SIGNIN_VIEW: "true"
+      FORGEJO__service__DISABLE_REGISTRATION: "true"
+      FORGEJO__service__DEFAULT_KEEP_EMAIL_PRIVATE: "true"
+      FORGEJO__security__INSTALL_LOCK: "true"
+    volumes:
+      - forgejo_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  orchestrator:
+    build:
+      context: ./orchestrator
+      target: runtime
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      forgejo:
+        condition: service_started
+    env_file: .env
+    environment:
+      POSTGRES_DB: ${ORCHESTRATOR_DB_NAME}
+      POSTGRES_USER: ${ORCHESTRATOR_DB_USER}
+      POSTGRES_PASSWORD: ${ORCHESTRATOR_DB_PASSWORD}
+    user: "1000:1000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  scheduler:
+    build:
+      context: ./orchestrator
+      target: runtime
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      # Wait for the web service to run migrations first, avoiding a migrate race.
+      orchestrator:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      POSTGRES_DB: ${ORCHESTRATOR_DB_NAME}
+      POSTGRES_USER: ${ORCHESTRATOR_DB_USER}
+      POSTGRES_PASSWORD: ${ORCHESTRATOR_DB_PASSWORD}
+    user: "1000:1000"
+    command: ["python", "manage.py", "run_scheduler"]
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - forgejo
+      - orchestrator
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - internal
+
+volumes:
+  db_data:
+  forgejo_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:
