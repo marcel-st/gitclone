@@ -26,10 +26,13 @@ Services:
 | URL                         | What                                   |
 |-----------------------------|----------------------------------------|
 | `https://<DOMAIN>/`         | Forgejo — browse archive, git endpoint |
-| `https://<DOMAIN>/admin/`   | Django orchestrator dashboard          |
+| `https://<DOMAIN>/app/`     | React dashboard (targets, repos, push) |
+| `https://<DOMAIN>/admin/`   | Django admin (raw data + audit log)    |
 
-First boot: complete the Forgejo install wizard, create the admin account, enable 2FA,
-then create a Forgejo API token and put it in `.env` as `FORGEJO_ADMIN_TOKEN`.
+First boot and day-2 operations (backups, restore, monitoring) are documented in
+`docs/operations.md`. In short: complete the Forgejo install wizard, create the admin
+account, enable 2FA, then create a Forgejo API token and put it in `.env` as
+`FORGEJO_ADMIN_TOKEN`.
 
 ## Environment
 

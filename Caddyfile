@@ -2,7 +2,13 @@
 {$DOMAIN} {
 	encode zstd gzip
 
-	# Django orchestrator: dashboard, API, its own static files, health.
+	# React dashboard (SPA served by nginx).
+	@dashboard path /app /app/*
+	handle @dashboard {
+		reverse_proxy frontend:80
+	}
+
+	# Django orchestrator: admin, API, its own static files, health.
 	@orchestrator path /admin/* /orchestrator-api/* /static/* /healthz/*
 	handle @orchestrator {
 		reverse_proxy orchestrator:8000
